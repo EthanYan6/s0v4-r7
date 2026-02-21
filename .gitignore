@@ -1,0 +1,10 @@
+obj/
+bin/
+.vsconfig/
+.vscode/
+.clangd/
+.DS_Store
+
+*.log
+*.log.bak
+__pycache__/
