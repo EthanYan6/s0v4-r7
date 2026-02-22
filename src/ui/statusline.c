@@ -9,7 +9,9 @@
 #include "../helper/bands.h"
 #include "../helper/battery.h"
 #include "../helper/channels.h"
+#include "../helper/measurements.h"
 #include "../helper/numnav.h"
+#include "../radio.h"
 #include "../scheduler.h"
 #include "components.h"
 #include "graphics.h"
@@ -79,12 +81,101 @@ void STATUSLINE_update(void) {
   }
 }
 
+/* 功率短名：很低/低/中/高 -> UL / L / M / H */
+static const char *const powerShortNames[] = {"UL", "L", "M", "H"};
+/* 亚音短名：无 / CT / DCS / -DCS */
+static const char *const codeShortNames[] = {"-", "CT", "DC", "-D"};
+
+/* 顶部状态栏统一垂直范围：y=0～5，所有图标与文字在此高度内对齐 */
+#define STATUS_ICON_TOP    0
+#define STATUS_ICON_BOTTOM 5
+
+/* 1 Moto R7 页面：左侧天线+5格信号（一体）+ 直频 + 功率 + 亚音 + 芯片，右侧仅电池，无主文案 */
+static void STATUSLINE_renderVfo1(void) {
+  const uint8_t BASE_Y = STATUS_ICON_BOTTOM;  /* 文字基线，与图标底边对齐 */
+  const uint8_t ANTENNA_W = 3;
+  const uint8_t BARS_LEFT = 3;
+  const uint8_t BAR_W = 2;
+  const uint8_t BAR_GAP = 1;
+  const uint8_t BAR_BASE_Y = STATUS_ICON_BOTTOM;
+  const uint8_t BAR_HEIGHTS[] = {1, 2, 3, 4, 5};
+  const uint8_t ICON_GAP = 2;
+  const uint8_t SIGNAL_BARS_END = BARS_LEFT + 5 * (BAR_W + BAR_GAP);
+  const uint8_t DIRECT_FREQ_W = 6;
+  const uint8_t DIRECT_FREQ_LEFT = SIGNAL_BARS_END + ICON_GAP;
+  const uint8_t POWER_LEFT = DIRECT_FREQ_LEFT + DIRECT_FREQ_W + ICON_GAP;
+  const uint8_t POWER_W = 10;
+  const uint8_t CODE_LEFT = POWER_LEFT + POWER_W + ICON_GAP;
+  const uint8_t CODE_W = 8;
+  const uint8_t CHIP_LEFT = CODE_LEFT + CODE_W + ICON_GAP;
+
+  /* 1. 天线 + 5 格信号（一体），均在 STATUS_ICON_TOP～BOTTOM 内 */
+  DrawVLine(1, STATUS_ICON_TOP + 1, (uint8_t)(STATUS_ICON_BOTTOM - STATUS_ICON_TOP), C_FILL);
+  DrawHLine(0, STATUS_ICON_TOP, ANTENNA_W, C_FILL);
+  uint16_t rssi = RADIO_GetRSSI();
+  int n = ConvertDomain((int)rssi, (int)RSSI_MIN, (int)RSSI_MAX, 0, 5);
+  if (n < 0) n = 0;
+  if (n > 5) n = 5;
+  for (uint8_t i = 0; i < 5; i++) {
+    uint8_t h = BAR_HEIGHTS[i];
+    uint8_t x = BARS_LEFT + i * (BAR_W + BAR_GAP);
+    uint8_t topY = BAR_BASE_Y - h;
+    if (i < (uint8_t)n) {
+      FillRect(x, topY, BAR_W, h, C_FILL);
+    }
+  }
+
+  /* 2. 直频图标 |->| ，两竖线下方短 1px（只画到 y=4） */
+  if (RADIO_GetTXF() == radio->rxF) {
+    uint8_t x0 = DIRECT_FREQ_LEFT;
+    const uint8_t directFreqH = STATUS_ICON_BOTTOM - STATUS_ICON_TOP;  /* 5，比图标带短 1px */
+    DrawVLine(x0, STATUS_ICON_TOP, directFreqH, C_FILL);
+    DrawVLine(x0 + 5, STATUS_ICON_TOP, directFreqH, C_FILL);
+    DrawHLine(x0 + 1, 2, 2, C_FILL);
+    PutPixel(x0 + 3, 1, C_FILL);
+    PutPixel(x0 + 4, 2, C_FILL);
+    PutPixel(x0 + 3, 3, C_FILL);
+  }
+
+  /* 功率、亚音、芯片文字整体上移 1px */
+  const uint8_t TEXT_Y = BASE_Y - 1;
+  if (radio->power <= TX_POW_HIGH) {
+    PrintSmall(POWER_LEFT, TEXT_Y, "%s", powerShortNames[radio->power]);
+  }
+  if (radio->code.tx.type < 4u) {
+    PrintSmall(CODE_LEFT, TEXT_Y, "%s", codeShortNames[radio->code.tx.type]);
+  }
+  if (RADIO_GetRadio() <= RADIO_SI4732) {
+    PrintSmall(CHIP_LEFT, TEXT_Y, "%s", shortRadioNames[RADIO_GetRadio()]);
+  }
+
+  /* 右侧仅电池 */
+  if (showBattery) {
+    if (gSettings.batteryStyle) {
+      PrintSmallEx(LCD_WIDTH - 1, BASE_Y, POS_R, C_INVERT, "%u%%",
+                   gBatteryPercent);
+    } else {
+      UI_Battery(previousBatteryLevel);
+    }
+  }
+  if (gSettings.batteryStyle == BAT_VOLTAGE) {
+    PrintSmallEx(LCD_WIDTH - 1 - 16, BASE_Y, POS_R, C_FILL, "%u.%02uV",
+                 gBatteryVoltage / 100, gBatteryVoltage % 100);
+  }
+}
+
 void STATUSLINE_render(void) {
   UI_ClearStatus();
 
   const uint8_t BASE_Y = 4;
 
   DrawHLine(0, 6, LCD_WIDTH, C_FILL);
+
+  /* 1 Moto R7 页面：仅电池 + 左侧天线与 5 格信号 */
+  if (gCurrentApp == APP_VFO1) {
+    STATUSLINE_renderVfo1();
+    return;
+  }
 
   if (showBattery) {
     if (gSettings.batteryStyle) {

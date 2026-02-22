@@ -397,72 +397,53 @@ static void DrawRegs(void) {
   }
 }
 
-/* 中间区域：RSSI 条上移 1px、与方框间隔 1px，下方方框（左侧加粗），框内三行带间隙 */
+/* 中间区域：方框（左侧加粗），框内两行左对齐，两行总高度约占内容区 3/4，第二行用较大字体 */
 static void renderMiddleContent(uint8_t startY, uint8_t height, uint32_t f,
                                 const char *name, bool isChMode, int16_t chNum,
                                 bool isTx) {
-  const uint8_t THICK_LEFT = 4;   /* 方框左侧加粗宽度 */
-  const uint8_t BOX_PAD = 2;      /* 框内左边距 */
-  const uint8_t RSSI_H = 4;       /* RSSI 条高度 */
-  const uint8_t GAP_RSSI_BOX = 1; /* RSSI 与方框间隔 1 像素 */
-  /* RSSI 整体上移 1px：画在 startY-1；方框在 RSSI 下 + 1px 间隔 */
-  uint8_t rssiY = startY > 0 ? startY - 1 : 0;
-  uint8_t boxY = rssiY + RSSI_H + GAP_RSSI_BOX;
-  uint8_t boxH = height - RSSI_H - GAP_RSSI_BOX;
+  (void)isTx;
+  const uint8_t THICK_LEFT = 6;
+  const uint8_t BOX_PAD = 5;   /* 左边距（加宽） */
+  const uint8_t PAD_TOP = 10;   /* 上边距（加宽） */
+  const uint8_t LINE1_H = 6;
+  const uint8_t GAP = 6;       /* 第一行与第二行间隔（加宽） */
+  const uint8_t LINE2_DOWN = 4;
+  uint8_t boxY = startY;
+  uint8_t boxH = height;
+  bool hasSignal = RADIO_IsSquelchOpen();
 
-  /* RSSI 条前显示场强与 dBm（小字，下移 4px），再画条 */
-  if (gIsListening || gVfo1ProMode) {
-    uint16_t rssi = RADIO_GetRSSI();
-    int dbm = Rssi2DBm(rssi);
-    const uint8_t RSSI_TEXT_W = 38;  /* 预留“场强 -120 dBm”宽度，条从其后开始 */
-    PrintSmall(0, rssiY + 4, "场强 %d dBm", dbm);
-    if (rssi != 0) {
-      const uint8_t barW = LCD_WIDTH - RSSI_TEXT_W - 2;
-      uint8_t rssiW = (uint8_t)ConvertDomain(rssi, RSSI_MIN, RSSI_MAX, 0, barW);
-      FillRect(RSSI_TEXT_W, rssiY, rssiW, RSSI_H, C_FILL);
-    }
+  /* 方框：尺寸不变，仅框内边距与行距加宽 */
+  if (hasSignal) {
+    DrawRect(0, boxY, THICK_LEFT, boxH, C_FILL);
+  } else {
+    FillRect(0, boxY, THICK_LEFT, boxH, C_FILL);
   }
-
-  /* 下方方框：左侧加粗竖条 + 边框 */
-  FillRect(0, boxY, THICK_LEFT, boxH, C_FILL);
   DrawHLine(THICK_LEFT, boxY, LCD_WIDTH - THICK_LEFT, C_FILL);
   DrawHLine(THICK_LEFT, boxY + boxH - 1, LCD_WIDTH - THICK_LEFT, C_FILL);
   DrawVLine(LCD_WIDTH - 1, boxY, boxH, C_FILL);
 
-  /* 框内三行：上边距 + 第一行与第二行 1 像素间隔，第二行与第三行保持间隙 */
   uint8_t innerX = THICK_LEFT + BOX_PAD;
-  uint8_t padTop = 5 + 2 + 1;
-  uint8_t padBottom = 3;
-  const uint8_t GAP_1_2 = 1;   /* 第一行与第二行 1 像素间隔 */
-  const uint8_t GAP_2_3 = 2;   /* 第二行与第三行间隙 */
-  const uint8_t DOWN_2_3 = 3;  /* 第二行、第三行整体下移 3 像素 */
-  uint8_t usableH = (boxH > padTop + padBottom) ? (boxH - padTop - padBottom) : 0;
-  uint8_t lineH = (usableH > GAP_1_2 + GAP_2_3) ? (usableH - GAP_1_2 - GAP_2_3) / 3 : 5;
-  uint8_t y1 = boxY + padTop;
-  uint8_t y2 = y1 + lineH + GAP_1_2 + DOWN_2_3;
-  uint8_t y3 = y2 + lineH + GAP_2_3;
+  uint8_t y1 = boxY + PAD_TOP + 2;
+  uint8_t y2 = y1 + LINE1_H + GAP + LINE2_DOWN;
 
-  /* 第一行：先信道号再信道名，完整显示信道名；非信道模式显示 VFO */
+  /* 框内右上角：dBm 灵敏度，反色显示（下移 4px 避免超出框） */
+  {
+    uint16_t rssi = RADIO_GetRSSI();
+    int dbm = Rssi2DBm(rssi);
+    PrintSmallEx(LCD_WIDTH - 1, boxY + 6, POS_R, C_INVERT, "%d dBm", dbm);
+  }
+
+  /* 第一行：信道号正常显示，仅信道名或 VFO 反色（黑底白字） */
   if (isChMode) {
     uint16_t num = (chNum >= 0) ? (uint16_t)(chNum + 1) : 1;
-    PrintSmall(innerX, y1, "%03u %s", num, name);
+    PrintMedium(innerX, y1, "%03u ", num);
+    PrintMediumEx(innerX + 24, y1, POS_L, C_INVERT, "%s", name);
   } else {
-    PrintSmall(innerX, y1, "VFO");
+    PrintMediumEx(innerX, y1, POS_L, C_INVERT, "VFO");
   }
 
-  /* 第二行：频率，左对齐，用较大字体 (f 为 10Hz 单位，MHZ=100000) */
-  PrintMedium(innerX, y2, "%u.%05u", f / MHZ, f % MHZ);
-
-  /* 第三行：Listening... 或 TX...，左对齐 */
-  if (isTx) {
-    if (gTxState != TX_ON) {
-      PrintSmall(innerX, y3, "TX %s", TX_STATE_NAMES[gTxState]);
-    } else {
-      PrintSmall(innerX, y3, "TX...");
-    }
-  } else {
-    PrintSmall(innerX, y3, "Listening...");
-  }
+  /* 第二行：频率，大号数字 */
+  PrintBigDigits(innerX, y2, "%u.%05u", f / MHZ, f % MHZ);
 }
 
 static void renderProModeInfo(uint8_t y, const VFO *radio) {
@@ -486,10 +467,10 @@ void VFO1_render(void) {
   uint32_t f = gTxState == TX_ON ? RADIO_GetTXF() : GetScreenF(radio->rxF);
   const char *mod = modulationTypeOptions[radio->modulation];
 
-  /* 中间内容区：底栏框变高 2px，中间区结束于 y=54 */
+  /* 中间内容区：中间框向上增高 3px，结束于 y=54 */
   const uint8_t MID_START = 9;
   const uint8_t MID_END = 54;
-  const uint8_t MID_H = (uint8_t)((MID_END - MID_START) * 3 / 4);
+  const uint8_t MID_H = (uint8_t)((MID_END - MID_START) * 3 / 4) + 3;
 
   if (!gVfo1ProMode) {
     renderMiddleContent(MID_START, MID_H, f, radio->name, RADIO_IsChMode(),
