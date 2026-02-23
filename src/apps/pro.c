@@ -25,7 +25,7 @@
 #define PRO_SPECTRUM_MAX_H  (LCD_HEIGHT - PRO_SPECTRUM_TOP_Y)
 #define PRO_SPECTRUM_H_LEFT  (PRO_SPECTRUM_MAX_H + 4)
 #define PRO_SPECTRUM_H_RIGHT (LCD_HEIGHT - PRO_SPECTRUM_TOP_Y)
-#define PRO_AUDIO_BAR_CNT 12
+#define PRO_AUDIO_BAR_CNT 20
 #define PRO_VOICE_BARS 36
 #define PRO_VOICE_MAX_H  (PRO_TOP_ROW_H - 2)
 #define PRO_FREQ_Y 10
@@ -34,7 +34,6 @@
 #define PRO_TX_OFF_CLEAR_MS 6000
 
 static uint8_t voiceHistory[PRO_VOICE_BARS];
-static uint8_t barH[PRO_AUDIO_BAR_CNT];
 static uint32_t lastTxOffTime;
 static bool wasTx;
 static bool inTxOffCooldown;
@@ -117,14 +116,18 @@ static void proTuneTo(uint32_t f) {
 }
 
 #define RSSI_STRONG 150
+#define PRO_SPECTRUM_BLOCK_H  2
+#define PRO_SPECTRUM_BLOCK_GAP 1
+#define PRO_SPECTRUM_H_MAX  (PRO_SPECTRUM_H_RIGHT - 12)
 
 static void renderAudioBars(void) {
   uint8_t barW = (LCD_WIDTH - (PRO_AUDIO_BAR_CNT - 1) * PRO_SPECTRUM_BAR_GAP) / PRO_AUDIO_BAR_CNT;
   uint8_t step = barW + PRO_SPECTRUM_BAR_GAP;
   uint16_t rssi = RADIO_GetRSSI();
   int rs;
-  uint8_t i, h;
-  int maxHi, d;
+  uint8_t i, h, y_off, segH;
+  int maxHi;
+  uint8_t prof;
 
   if (rssi <= RSSI_MIN)
     rs = 0;
@@ -139,21 +142,25 @@ static void renderAudioBars(void) {
                modulationTypeOptions[radio->modulation]);
   if (rs <= 0) return;
   for (i = 0; i < PRO_AUDIO_BAR_CNT; i++) {
-    uint8_t j = (uint8_t)((i * 11 + 5) & 7u);
-    h = (uint8_t)(rs * (1 + (int)j) / 8);
-    maxHi = (int)PRO_SPECTRUM_H_LEFT - (int)((int)(PRO_SPECTRUM_H_LEFT - PRO_SPECTRUM_H_RIGHT) * (int)i / 11);
-    d = 7 - 2 * (i <= 5 ? (int)(5 - i) : (int)(i - 6));
-    if (i >= 10) d -= 8;
-    maxHi += d;
-    if (maxHi < 0) maxHi = 0;
+    if (i <= 6)
+      prof = (uint8_t)i;
+    else if (i <= 16)
+      prof = (uint8_t)((18 - i) / 2);
+    else if (i == 17)
+      prof = 1;
+    else
+      prof = 2;
+    maxHi = (prof == 0) ? 1 : (int)PRO_SPECTRUM_H_MAX * (int)prof / 6;
+    if (maxHi < 1) maxHi = 1;
+    h = 1 + (int)((maxHi - 1) * (unsigned)rs / (int)PRO_SPECTRUM_H_LEFT);
     if (h > maxHi) h = (uint8_t)maxHi;
-    barH[i] = h;
-    if (h)
-      FillRect((int16_t)(i * step), LCD_HEIGHT - h, barW, h, C_FILL);
+    if (h < 1) h = 1;
+    for (y_off = 0; y_off < h; y_off += PRO_SPECTRUM_BLOCK_H + PRO_SPECTRUM_BLOCK_GAP) {
+      segH = (h - y_off) >= PRO_SPECTRUM_BLOCK_H ? PRO_SPECTRUM_BLOCK_H : (uint8_t)(h - y_off);
+      if (segH)
+        FillRect((int16_t)(i * step), (int16_t)(LCD_HEIGHT - h + y_off), barW, segH, C_FILL);
+    }
   }
-  for (i = 0; i < PRO_AUDIO_BAR_CNT - 1; i++)
-    DrawLine((int16_t)(i * step + barW / 2), (int16_t)(LCD_HEIGHT - (int)barH[i]),
-             (int16_t)((i + 1) * step + barW / 2), (int16_t)(LCD_HEIGHT - (int)barH[i + 1]), C_FILL);
 }
 
 void PRO_init(void) {

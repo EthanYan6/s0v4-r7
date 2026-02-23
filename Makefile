@@ -40,8 +40,9 @@ endif
 
 # 非 git 仓库时为空或错误信息，fw-pack.py 会使用默认 "nogit"
 GIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null)
-TS := $(shell date -u +'"%Y-%m-%d %H:%M UTC"')
-TS_FILE := $(shell date -u +'"%Y%m%d_%H%M"')
+# 编译时间戳：北京时间 (UTC+8)
+TS := $(shell TZ=Asia/Shanghai date +'"%Y-%m-%d %H:%M CST"')
+TS_FILE := $(shell TZ=Asia/Shanghai date +'"%Y%m%d_%H%M"')
 
 ASFLAGS = -c -mcpu=cortex-m0
 CFLAGS = -Os -Wall -Wno-error -mcpu=cortex-m0 -fno-builtin -fshort-enums -fno-delete-null-pointer-checks -Wno-error=incompatible-pointer-types -std=c2x -MMD -flto=auto -Wextra
