@@ -62,8 +62,7 @@ CCFLAGS += -DARMCM0
 
 
 LDFLAGS = -mcpu=cortex-m0 -nostartfiles -Wl,-T,firmware.ld
-# Use newlib (remove nano.specs if your toolchain has no libc_nano)
-LDFLAGS += -lc -lnosys -mthumb -mabi=aapcs -lm -fno-rtti -fno-exceptions
+LDFLAGS += -specs=nano.specs -lc -lnosys -mthumb -mabi=aapcs -lm -fno-rtti -fno-exceptions
 LDFLAGS += -Wl,--build-id=none
 LDFLAGS += -z noseparate-code -z noexecstack -mcpu=cortex-m0 -nostartfiles -Wl,-L,linker -Wl,--gc-sections
 LDFLAGS += -Wl,--print-memory-usage

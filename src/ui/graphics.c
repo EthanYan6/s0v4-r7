@@ -1,6 +1,5 @@
 #include "graphics.h"
 #include "../misc.h"
-#include "fonts/NumbersStepanv3.h"
 #include "fonts/NumbersStepanv4.h"
 #include "fonts/TomThumb.h"
 #include "fonts/muHeavy8ptBold.h"
@@ -14,7 +13,6 @@ static const GFXfont *fontSmall = &TomThumb;
 static const GFXfont *fontMedium = &MuMatrix8ptRegular;
 static const GFXfont *fontMediumBold = &muHeavy8ptBold;
 static const GFXfont *fontBig = &dig_11;
-static const GFXfont *fontBiggest = &dig_14;
 
 void UI_ClearStatus(void) {
   // memset(gFrameBuffer[0], 0, sizeof(gFrameBuffer[0]));
@@ -155,6 +153,31 @@ static void m_putchar(int16_t x, int16_t y, unsigned char c, Color color,
   }
 }
 
+static void m_putchar_slanted(int16_t x, int16_t y, unsigned char c,
+                              Color color, uint8_t size_x, uint8_t size_y,
+                              int8_t slant, const GFXfont *gfxFont) {
+  c -= gfxFont->first;
+  const GFXglyph *glyph = &gfxFont->glyph[c];
+  const uint8_t *bitmap = gfxFont->bitmap;
+  uint16_t bo = glyph->bitmapOffset;
+  uint8_t w = glyph->width, h = glyph->height;
+  int8_t xo = glyph->xOffset, yo = glyph->yOffset;
+  uint8_t xx, yy, bits = 0, bit = 0;
+  if (size_x != 1 || size_y != 1) {
+    m_putchar(x, y, c + gfxFont->first, color, size_x, size_y, gfxFont);
+    return;
+  }
+  for (yy = 0; yy < h; yy++) {
+    int16_t sx = (int16_t)(yy * slant);
+    for (xx = 0; xx < w; xx++) {
+      if (!(bit++ & 7)) bits = bitmap[bo++];
+      if (bits & 0x80)
+        PutPixel(x + xo + xx + sx, y + yo + yy, color);
+      bits <<= 1;
+    }
+  }
+}
+
 void charBounds(unsigned char c, int16_t *x, int16_t *y, int16_t *minx,
                 int16_t *miny, int16_t *maxx, int16_t *maxy, uint8_t textsize_x,
                 uint8_t textsize_y, bool wrap, const GFXfont *gfxFont) {
@@ -261,6 +284,49 @@ static void printString(const GFXfont *gfxFont, uint8_t x, uint8_t y,
   }
 }
 
+static void write_slanted(uint8_t c, uint8_t textsize_x, uint8_t textsize_y,
+                          bool wrap, Color color, int8_t slant,
+                          const GFXfont *gfxFont) {
+  if (c == '\n') {
+    cursor.x = 0;
+    cursor.y += (int16_t)textsize_y * gfxFont->yAdvance;
+  } else if (c != '\r') {
+    uint8_t first = gfxFont->first;
+    if ((c >= first) && (c <= gfxFont->last)) {
+      GFXglyph *glyph = &gfxFont->glyph[c - first];
+      uint8_t w = glyph->width, h = glyph->height;
+      if ((w > 0) && (h > 0)) {
+        int16_t xo = glyph->xOffset;
+        if (wrap && ((cursor.x + textsize_x * (xo + w)) > LCD_WIDTH)) {
+          cursor.x = 0;
+          cursor.y += (int16_t)textsize_y * gfxFont->yAdvance;
+        }
+        m_putchar_slanted(cursor.x, cursor.y, c, color, textsize_x, textsize_y,
+                          slant, gfxFont);
+      }
+      cursor.x += glyph->xAdvance * (int16_t)textsize_x;
+    }
+  }
+}
+
+static void printStringSlanted(const GFXfont *gfxFont, uint8_t x, uint8_t y,
+                               Color color, TextPos posLCR, int8_t slant,
+                               const char *pattern, va_list args) {
+  char String[64] = {'\0'};
+  vsnprintf(String, 63, pattern, args);
+  int16_t x1, y1;
+  uint16_t w, h;
+  getTextBounds(String, x, y, &x1, &y1, &w, &h, false, gfxFont);
+  if (posLCR == POS_C)
+    x = x - (int16_t)(w + (h > 0 ? (int)(h - 1) * slant : 0)) / 2;
+  else if (posLCR == POS_R)
+    x = x - w - (h > 0 ? (int)(h - 1) * slant : 0);
+  cursor.x = x;
+  cursor.y = y;
+  for (uint8_t i = 0; i < strlen(String); i++)
+    write_slanted(String[i], 1, 1, true, color, slant, gfxFont);
+}
+
 void PrintSmall(uint8_t x, uint8_t y, const char *pattern, ...) {
   va_list args;
   va_start(args, pattern);
@@ -321,18 +387,11 @@ void PrintBigDigitsEx(uint8_t x, uint8_t y, TextPos posLCR, Color color,
   va_end(args);
 }
 
-void PrintBiggestDigits(uint8_t x, uint8_t y, const char *pattern, ...) {
+void PrintBigDigitsSlantedEx(uint8_t x, uint8_t y, TextPos posLCR, Color color,
+                             int8_t slant, const char *pattern, ...) {
   va_list args;
   va_start(args, pattern);
-  printString(fontBiggest, x, y, C_FILL, POS_L, pattern, args);
-  va_end(args);
-}
-
-void PrintBiggestDigitsEx(uint8_t x, uint8_t y, TextPos posLCR, Color color,
-                          const char *pattern, ...) {
-  va_list args;
-  va_start(args, pattern);
-  printString(fontBiggest, x, y, color, posLCR, pattern, args);
+  printStringSlanted(fontBig, x, y, color, posLCR, slant, pattern, args);
   va_end(args);
 }
 

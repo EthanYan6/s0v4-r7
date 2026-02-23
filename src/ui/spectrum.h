@@ -16,8 +16,10 @@ void SP_RenderLine(uint16_t rssi);
 void SP_RenderArrow(const Band *p, uint32_t f);
 uint16_t SP_GetNoiseFloor();
 uint16_t SP_GetRssiMax();
+uint16_t SP_GetRssiAt(uint8_t x);
 
 void SP_RenderGraph();
+void SP_RenderCurve(void); /* 频率-强度曲线，基线在底、只向上凸起 */
 void SP_AddGraphPoint(const Measurement *msm);
 void SP_Shift(int16_t n);
 void SP_ShiftGraph(int16_t n);
@@ -32,5 +34,6 @@ void CUR_Reset();
 
 extern uint8_t SPECTRUM_Y;
 extern uint8_t SPECTRUM_H;
+extern bool SP_SkipMiddleTicks;
 
 #endif /* end of include guard: UI_SPECTRUM_H */

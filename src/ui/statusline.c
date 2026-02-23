@@ -90,7 +90,13 @@ static const char *const codeShortNames[] = {"-", "CT", "DC", "-D"};
 #define STATUS_ICON_TOP    0
 #define STATUS_ICON_BOTTOM 5
 
-/* 1 Moto R7 页面：左侧天线+5格信号（一体）+ 直频 + 功率 + 亚音 + 芯片，右侧仅电池，无主文案 */
+/* 在 (x,y) 绘制宽窄带（复用 radio 的 bwNames），仅 BK4819 有效 */
+static void drawBwAt(uint8_t x, uint8_t y) {
+  if (RADIO_GetRadio() == RADIO_BK4819 && radio->bw <= BK4819_FILTER_BW_26k)
+    PrintSmall(x, y, "%s", bwNames[radio->bw]);
+}
+
+/* 1 Moto R7 页面：左侧天线+5格信号（一体）+ 直频 + 功率 + 亚音 + 芯片 + 宽窄带，右侧仅电池，无主文案 */
 static void STATUSLINE_renderVfo1(void) {
   const uint8_t BASE_Y = STATUS_ICON_BOTTOM;  /* 文字基线，与图标底边对齐 */
   const uint8_t ANTENNA_W = 3;
@@ -108,6 +114,8 @@ static void STATUSLINE_renderVfo1(void) {
   const uint8_t CODE_LEFT = POWER_LEFT + POWER_W + ICON_GAP;
   const uint8_t CODE_W = 8;
   const uint8_t CHIP_LEFT = CODE_LEFT + CODE_W + ICON_GAP;
+  const uint8_t CHIP_W = 10;
+  const uint8_t BW_LEFT = CHIP_LEFT + CHIP_W + ICON_GAP;
 
   /* 1. 天线 + 5 格信号（一体），均在 STATUS_ICON_TOP～BOTTOM 内 */
   DrawVLine(1, STATUS_ICON_TOP + 1, (uint8_t)(STATUS_ICON_BOTTOM - STATUS_ICON_TOP), C_FILL);
@@ -148,6 +156,7 @@ static void STATUSLINE_renderVfo1(void) {
   if (RADIO_GetRadio() <= RADIO_SI4732) {
     PrintSmall(CHIP_LEFT, TEXT_Y, "%s", shortRadioNames[RADIO_GetRadio()]);
   }
+  drawBwAt(BW_LEFT, TEXT_Y);
 
   /* 右侧仅电池 */
   if (showBattery) {
@@ -164,7 +173,30 @@ static void STATUSLINE_renderVfo1(void) {
   }
 }
 
+void STATUSLINE_renderVfo1Row(uint8_t y) {
+  if (RADIO_GetRadio() <= RADIO_SI4732) {
+    PrintSmall(0, y, "%s", shortRadioNames[RADIO_GetRadio()]);
+  }
+  if (radio->power <= TX_POW_HIGH) {
+    PrintSmall(10, y, "%s", powerShortNames[radio->power]);
+  }
+  if (radio->code.tx.type < 4u) {
+    PrintSmall(22, y, "%s", codeShortNames[radio->code.tx.type]);
+  }
+  drawBwAt(34, y);
+  if (showBattery) {
+    PrintSmallEx(LCD_WIDTH - 1, y, POS_R, C_INVERT, "%u%%", gBatteryPercent);
+  }
+  if (gSettings.batteryStyle == BAT_VOLTAGE) {
+    PrintSmallEx(LCD_WIDTH - 1 - 16, y, POS_R, C_FILL, "%u.%02uV",
+                 gBatteryVoltage / 100, gBatteryVoltage % 100);
+  }
+}
+
 void STATUSLINE_render(void) {
+  if (gCurrentApp == APP_PRO) {
+    return;
+  }
   UI_ClearStatus();
 
   const uint8_t BASE_Y = 4;

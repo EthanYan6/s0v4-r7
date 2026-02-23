@@ -36,16 +36,9 @@ static StaticTimer_t vfoSaveTimerBuffer;
 
 static const RegisterSpec registerSpecs[] = {
     {"Gain", BK4819_REG_13, 0, 0xFFFF, 1},
-    /* {"RF", BK4819_REG_43, 12, 0b111, 1},
-    {"RFwe", BK4819_REG_43, 9, 0b111, 1}, */
-
     {"IF", 0x3D, 0, 0xFFFF, 100},
-
     {"DEV", 0x40, 0, 0xFFF, 10},
-    // {"300T", 0x44, 0, 0xFFFF, 1000},
     RS_RF_FILT_BW,
-    // {"AFTxfl", 0x43, 6, 0b111, 1}, // 7 is widest
-    // {"3kAFrsp", 0x74, 0, 0xFFFF, 100},
     {"CMP", 0x31, 3, 1, 1},
     {"MIC", 0x7D, 0, 0xF, 1},
 
@@ -60,7 +53,6 @@ static void UpdateRegMenuValue(RegisterSpec s, bool add) {
   if (s.num == BK4819_REG_13) {
     v = radio->gainIndex;
     maxValue = ARRAY_SIZE(gainTable) - 1;
-    // Log("GAIN v=%u, max=%u", v, maxValue);
   } else if (s.num == 0x73) {
     v = BK4819_GetAFC();
     maxValue = 8;
@@ -74,7 +66,6 @@ static void UpdateRegMenuValue(RegisterSpec s, bool add) {
   } else if (!add && v >= 0 + s.inc) {
     v -= s.inc;
   }
-  // Log("GAIN v=%u, max=%u", v, maxValue);
 
   if (s.num == BK4819_REG_13) {
     RADIO_SetGain(v);
@@ -145,7 +136,7 @@ bool VFOPRO_key(KEY_Code_t key, Key_State_t state) {
   }
   if (state == KEY_LONG_PRESSED) {
     switch (key) {
-    case KEY_4: // freq catch
+    case KEY_4:
       if (RADIO_GetRadio() != RADIO_BK4819) {
         gShowAllRSSI = !gShowAllRSSI;
       }
@@ -177,7 +168,6 @@ bool VFOPRO_key(KEY_Code_t key, Key_State_t state) {
         gMonitorMode = !gMonitorMode;
         return true;
       }
-      // FALL!
     case KEY_SIDE2:
       if (RADIO_GetRadio() == RADIO_SI4732 && isSsb) {
         RADIO_TuneToSave(radio->rxF + (key == KEY_SIDE1 ? 1 : -1));
@@ -246,7 +236,6 @@ bool VFO1_keyEx(KEY_Code_t key, Key_State_t state, bool isProMode) {
     return true;
   }
 
-  // pressed or hold continue
   if (state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) {
     bool isSsb = RADIO_IsSSB();
     switch (key) {
@@ -274,43 +263,19 @@ bool VFO1_keyEx(KEY_Code_t key, Key_State_t state, bool isProMode) {
   bool longHeld = state == KEY_LONG_PRESSED;
   bool simpleKeypress = state == KEY_RELEASED;
 
-  // long held
   if (longHeld) {
     switch (key) {
     case KEY_EXIT:
       startABScan();
       return true;
-    case KEY_1:
-      gChListFilter = TYPE_FILTER_BAND;
-      APPS_run(APP_CH_LIST);
-      return true;
-    case KEY_2:
-      /* 本页面禁用长按 2 切换 AB/Pro，避免误触 */
-      if (gCurrentApp == APP_VFO1) {
-        return true;
-      }
-      return false;
     case KEY_3:
       RADIO_ToggleVfoMR();
       VFO1_init();
       return true;
     case KEY_5:
-      // SVC_Toggle(SVC_BEACON, !SVC_Running(SVC_BEACON), 15000);
       return true;
     case KEY_6:
       RADIO_ToggleTxPower();
-      return true;
-    case KEY_7:
-      RADIO_UpdateStep(true);
-      return true;
-    case KEY_8:
-      radio->offsetDir = IncDecU(radio->offsetDir, 0, OFFSET_MINUS, true);
-      return true;
-    case KEY_9: // call
-      gTextInputSize = 15;
-      gTextinputText = message;
-      gTextInputCallback = sendDtmf;
-      APPS_run(APP_TEXTINPUT);
       return true;
     case KEY_0:
       RADIO_ToggleModulation();
@@ -327,7 +292,6 @@ bool VFO1_keyEx(KEY_Code_t key, Key_State_t state, bool isProMode) {
     }
   }
 
-  // Simple keypress
   if (simpleKeypress) {
     switch (key) {
     case KEY_0:
@@ -397,22 +361,20 @@ static void DrawRegs(void) {
   }
 }
 
-/* 中间区域：方框（左侧加粗），框内两行左对齐，两行总高度约占内容区 3/4，第二行用较大字体 */
 static void renderMiddleContent(uint8_t startY, uint8_t height, uint32_t f,
                                 const char *name, bool isChMode, int16_t chNum,
                                 bool isTx) {
   (void)isTx;
   const uint8_t THICK_LEFT = 6;
-  const uint8_t BOX_PAD = 5;   /* 左边距（加宽） */
-  const uint8_t PAD_TOP = 10;   /* 上边距（加宽） */
+  const uint8_t BOX_PAD = 5;
+  const uint8_t PAD_TOP = 10;
   const uint8_t LINE1_H = 6;
-  const uint8_t GAP = 6;       /* 第一行与第二行间隔（加宽） */
+  const uint8_t GAP = 6;
   const uint8_t LINE2_DOWN = 4;
   uint8_t boxY = startY;
   uint8_t boxH = height;
   bool hasSignal = RADIO_IsSquelchOpen();
 
-  /* 方框：尺寸不变，仅框内边距与行距加宽 */
   if (hasSignal) {
     DrawRect(0, boxY, THICK_LEFT, boxH, C_FILL);
   } else {
@@ -426,14 +388,12 @@ static void renderMiddleContent(uint8_t startY, uint8_t height, uint32_t f,
   uint8_t y1 = boxY + PAD_TOP + 2;
   uint8_t y2 = y1 + LINE1_H + GAP + LINE2_DOWN;
 
-  /* 框内右上角：dBm 灵敏度，反色显示（下移 4px 避免超出框） */
   {
     uint16_t rssi = RADIO_GetRSSI();
     int dbm = Rssi2DBm(rssi);
     PrintSmallEx(LCD_WIDTH - 1, boxY + 6, POS_R, C_INVERT, "%d dBm", dbm);
   }
 
-  /* 第一行：信道号正常显示，仅信道名或 VFO 反色（黑底白字） */
   if (isChMode) {
     uint16_t num = (chNum >= 0) ? (uint16_t)(chNum + 1) : 1;
     PrintMedium(innerX, y1, "%03u ", num);
@@ -442,7 +402,6 @@ static void renderMiddleContent(uint8_t startY, uint8_t height, uint32_t f,
     PrintMediumEx(innerX, y1, POS_L, C_INVERT, "VFO");
   }
 
-  /* 第二行：频率，大号数字 */
   PrintBigDigits(innerX, y2, "%u.%05u", f / MHZ, f % MHZ);
 }
 
@@ -461,13 +420,11 @@ static void renderProModeInfo(uint8_t y, const VFO *radio) {
 }
 
 void VFO1_render(void) {
-  /* 顶部菜单栏不变，由 STATUSLINE_renderCurrentBand 设文案，实际绘制在 system 中 */
   STATUSLINE_renderCurrentBand();
 
   uint32_t f = gTxState == TX_ON ? RADIO_GetTXF() : GetScreenF(radio->rxF);
   const char *mod = modulationTypeOptions[radio->modulation];
 
-  /* 中间内容区：中间框向上增高 3px，结束于 y=54 */
   const uint8_t MID_START = 9;
   const uint8_t MID_END = 54;
   const uint8_t MID_H = (uint8_t)((MID_END - MID_START) * 3 / 4) + 3;
@@ -482,14 +439,13 @@ void VFO1_render(void) {
     renderProModeInfo(40, radio);
   }
 
-  /* 底栏：一条横线 + 一条竖线画出两格；反色显示（黑底白字） */
   const uint8_t BOTTOM_BAR_Y = 54;
   const uint8_t BOTTOM_BAR_H = LCD_HEIGHT - BOTTOM_BAR_Y;
   const uint8_t HALF_W = LCD_WIDTH / 2;
-  FillRect(0, BOTTOM_BAR_Y, LCD_WIDTH, BOTTOM_BAR_H, C_FILL);  /* 黑底 */
-  DrawHLine(0, BOTTOM_BAR_Y, LCD_WIDTH, C_CLEAR);              /* 横线 */
-  DrawVLine(HALF_W, BOTTOM_BAR_Y, BOTTOM_BAR_H, C_CLEAR);      /* 竖线 */
-  const uint8_t BTN_CENTER_Y = BOTTOM_BAR_Y + BOTTOM_BAR_H / 2 + 1 + 2;  /* 字下移 2px */
+  FillRect(0, BOTTOM_BAR_Y, LCD_WIDTH, BOTTOM_BAR_H, C_FILL);
+  DrawHLine(0, BOTTOM_BAR_Y, LCD_WIDTH, C_CLEAR);
+  DrawVLine(HALF_W, BOTTOM_BAR_Y, BOTTOM_BAR_H, C_CLEAR);
+  const uint8_t BTN_CENTER_Y = BOTTOM_BAR_Y + BOTTOM_BAR_H / 2 + 1 + 2;
   PrintMediumEx(HALF_W / 2, BTN_CENTER_Y, POS_C, C_CLEAR, "Menu");
   PrintMediumEx(HALF_W + HALF_W / 2, BTN_CENTER_Y, POS_C, C_CLEAR, "%s", mod);
 }

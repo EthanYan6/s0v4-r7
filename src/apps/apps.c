@@ -1,5 +1,6 @@
 #include "apps.h"
 #include "../driver/st7565.h"
+#include "../radio.h"
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "about.h"
@@ -16,6 +17,7 @@
 #include "scaner.h"
 #include "settings.h"
 #include "textinput.h"
+#include "pro.h"
 #include "vfo1.h"
 #include "vfo2.h"
 
@@ -54,6 +56,7 @@ AppType_t APPS_Peek(void) {
 
 const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
     APP_VFO1,      //
+    APP_PRO,       //
     APP_VFO2,      //
     APP_CH_LIST,   //
     APP_SCANER,    //
@@ -85,7 +88,8 @@ const App apps[APPS_COUNT] = {
     {"CH cfg", CHCFG_init, NULL, CHCFG_render, CHCFG_key, CHCFG_deinit},
     {"Settings", NULL, NULL, SETTINGS_render, SETTINGS_key, SETTINGS_deinit},
     {"1 Moto R7", VFO1_init, VFO1_update, VFO1_render, VFO1_key, NULL},
-    {"2 VFO", VFO2_init, VFO2_update, VFO2_render, VFO2_key, NULL},
+    {"2 Pro", PRO_init, PRO_update, PRO_render, PRO_key, NULL},
+    {"3 Dual", VFO2_init, VFO2_update, VFO2_render, VFO2_key, NULL},
     {"Generator", GENERATOR_init, GENERATOR_update, GENERATOR_render,
      GENERATOR_key, NULL},
     {"ABOUT", NULL, NULL, ABOUT_Render, ABOUT_key, NULL},
@@ -131,8 +135,11 @@ void APPS_deinit(void) {
 }
 
 void APPS_run(AppType_t app) {
-  if (appsStack[stackIndex] == app) {
+  if (stackIndex >= 0 && appsStack[stackIndex] == app) {
     return;
+  }
+  if (app == APP_NONE) {
+    app = APP_VFO1;
   }
   if (app != APP_FINPUT && app != APP_TEXTINPUT) {
     APPS_deinit();

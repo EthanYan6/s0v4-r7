@@ -15,6 +15,7 @@ typedef struct {
 
 uint8_t SPECTRUM_Y = 8;
 uint8_t SPECTRUM_H = 44;
+bool SP_SkipMiddleTicks = false;
 
 static uint8_t S_BOTTOM;
 
@@ -36,19 +37,6 @@ static uint16_t minRssi(const uint16_t *array, uint8_t n) {
     }
   }
   return min;
-}
-
-static uint8_t maxNoise(const uint8_t *array, uint8_t n) {
-  uint16_t max = 0;
-  for (uint8_t i = 0; i < n; ++i) {
-    if (array[i] != UINT8_MAX && array[i] > max) {
-      max = array[i];
-    }
-    /* if (array[i] == UINT8_MAX) {
-      Log("!!! NOISE=255 at %u", i); // appears when switching bands
-    } */
-  }
-  return max;
 }
 
 void SP_ResetHistory(void) {
@@ -105,14 +93,24 @@ void SP_AddPoint(const Measurement *msm) {
   }
 }
 
-static VMinMax getV() {
-  const uint16_t rssiMin = minRssi(rssiHistory, filledPoints);
-  const uint16_t rssiMax = Max(rssiHistory, filledPoints);
+static VMinMax getVN(uint8_t n) {
+  if (n == 0) {
+    return (VMinMax){.vMin = RSSI_MIN, .vMax = RSSI_MAX};
+  }
+  uint16_t rssiMin = minRssi(rssiHistory, n);
+  const uint16_t rssiMax = Max(rssiHistory, n);
+  if (rssiMin > rssiMax || rssiMin == UINT16_MAX) {
+    return (VMinMax){.vMin = RSSI_MIN, .vMax = RSSI_MAX};
+  }
   const uint16_t rssiDiff = rssiMax - rssiMin;
   return (VMinMax){
       .vMin = rssiMin,
       .vMax = rssiMax + Clamp(rssiDiff, 20, rssiDiff),
   };
+}
+
+static VMinMax getV(void) {
+  return getVN(filledPoints);
 }
 
 uint16_t peaks[MAX_POINTS];
@@ -164,6 +162,9 @@ void SP_RenderLine(uint16_t rssi) {
 
 uint16_t SP_GetNoiseFloor() { return Std(rssiHistory, filledPoints); }
 uint16_t SP_GetRssiMax() { return Max(rssiHistory, filledPoints); }
+uint16_t SP_GetRssiAt(uint8_t x) {
+  return x < MAX_POINTS ? rssiHistory[x] : 0;
+}
 
 void SP_RenderGraph() {
   const VMinMax v = {
@@ -186,8 +187,29 @@ void SP_RenderGraph() {
   DrawHLine(0, SPECTRUM_Y, LCD_WIDTH, C_FILL);
   DrawHLine(0, S_BOTTOM, LCD_WIDTH, C_FILL);
 
-  for (uint8_t x = 0; x < LCD_WIDTH; x += 4) {
-    DrawHLine(x, SPECTRUM_Y + SPECTRUM_H / 2, 2, C_FILL);
+  if (!SP_SkipMiddleTicks) {
+    for (uint8_t x = 0; x < LCD_WIDTH; x += 4) {
+      DrawHLine(x, SPECTRUM_Y + SPECTRUM_H / 2, 2, C_FILL);
+    }
+  }
+}
+
+/* 固定范围内一条曲线：x=频率，有信号的频率显示凸起，只向上（基线在底） */
+void SP_RenderCurve(void) {
+  const VMinMax v = getVN(MAX_POINTS);
+  S_BOTTOM = SPECTRUM_Y + SPECTRUM_H;
+
+  /* 只画基线（底边），曲线在上方 */
+  DrawHLine(0, S_BOTTOM, LCD_WIDTH, C_FILL);
+
+  uint8_t oVal = 0;
+  for (uint8_t i = 0; i < MAX_POINTS; ++i) {
+    uint8_t yVal =
+        ConvertDomain(rssiHistory[i], v.vMin, v.vMax, 0, SPECTRUM_H);
+    if (i > 0) {
+      DrawLine(i - 1, S_BOTTOM - oVal, i, S_BOTTOM - yVal, C_FILL);
+    }
+    oVal = yVal;
   }
 }
 
