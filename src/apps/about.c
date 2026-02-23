@@ -3,11 +3,9 @@
 #include "apps.h"
 
 void ABOUT_Render() {
-  PrintMediumEx(LCD_XCENTER, LCD_YCENTER - 8, POS_C, C_FILL, "s0v4-r7 v2.0");
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER - 8, POS_C, C_FILL, "s0v4-r7 v2.1");
   PrintSmallEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "by BD1AHN");
   PrintSmallEx(LCD_XCENTER, LCD_YCENTER + 8, POS_C, C_FILL, TIME_STAMP);
-  PrintSmallEx(LCD_XCENTER, LCD_YCENTER + 24, POS_C, C_FILL,
-               "t.me/uvk5_spectrum_talk");
 }
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"

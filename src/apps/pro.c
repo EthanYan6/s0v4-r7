@@ -34,6 +34,7 @@
 #define PRO_TX_OFF_CLEAR_MS 6000
 
 static uint8_t voiceHistory[PRO_VOICE_BARS];
+static uint8_t barH[PRO_AUDIO_BAR_CNT];
 static uint32_t lastTxOffTime;
 static bool wasTx;
 static bool inTxOffCooldown;
@@ -119,10 +120,11 @@ static void proTuneTo(uint32_t f) {
 
 static void renderAudioBars(void) {
   uint8_t barW = (LCD_WIDTH - (PRO_AUDIO_BAR_CNT - 1) * PRO_SPECTRUM_BAR_GAP) / PRO_AUDIO_BAR_CNT;
+  uint8_t step = barW + PRO_SPECTRUM_BAR_GAP;
   uint16_t rssi = RADIO_GetRSSI();
   int rs;
   uint8_t i, h;
-  int maxHi;
+  int maxHi, d;
 
   if (rssi <= RSSI_MIN)
     rs = 0;
@@ -133,19 +135,25 @@ static void renderAudioBars(void) {
 
   PrintSmallEx(LCD_WIDTH - 1, PRO_SPECTRUM_TOP_Y, POS_R, C_FILL, "S%u %ddBm",
                DBm2S(Rssi2DBm(rssi), radio->rxF < VHF_UHF_BOUND_HZ), Rssi2DBm(rssi));
-  PrintSmallEx(LCD_WIDTH - 1, PRO_SPECTRUM_TOP_Y + 8 + 1, POS_R, C_FILL, "%s",
+  PrintSmallEx(LCD_WIDTH - 1, PRO_SPECTRUM_TOP_Y + 9, POS_R, C_FILL, "%s",
                modulationTypeOptions[radio->modulation]);
   if (rs <= 0) return;
   for (i = 0; i < PRO_AUDIO_BAR_CNT; i++) {
     uint8_t j = (uint8_t)((i * 11 + 5) & 7u);
     h = (uint8_t)(rs * (1 + (int)j) / 8);
-    maxHi = (int)PRO_SPECTRUM_H_LEFT - (int)((int)(PRO_SPECTRUM_H_LEFT - PRO_SPECTRUM_H_RIGHT) * (int)i / (int)(PRO_AUDIO_BAR_CNT - 1));
-    if (i == 5) maxHi += 3;
-    if (i == 6) maxHi += 4;
+    maxHi = (int)PRO_SPECTRUM_H_LEFT - (int)((int)(PRO_SPECTRUM_H_LEFT - PRO_SPECTRUM_H_RIGHT) * (int)i / 11);
+    d = 7 - 2 * (i <= 5 ? (int)(5 - i) : (int)(i - 6));
+    if (i >= 10) d -= 8;
+    maxHi += d;
+    if (maxHi < 0) maxHi = 0;
     if (h > maxHi) h = (uint8_t)maxHi;
+    barH[i] = h;
     if (h)
-      FillRect((int16_t)(i * (barW + PRO_SPECTRUM_BAR_GAP)), LCD_HEIGHT - h, barW, h, C_FILL);
+      FillRect((int16_t)(i * step), LCD_HEIGHT - h, barW, h, C_FILL);
   }
+  for (i = 0; i < PRO_AUDIO_BAR_CNT - 1; i++)
+    DrawLine((int16_t)(i * step + barW / 2), (int16_t)(LCD_HEIGHT - (int)barH[i]),
+             (int16_t)((i + 1) * step + barW / 2), (int16_t)(LCD_HEIGHT - (int)barH[i + 1]), C_FILL);
 }
 
 void PRO_init(void) {
