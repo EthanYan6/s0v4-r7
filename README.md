@@ -46,7 +46,8 @@
 3. 中间区域显示芯片等信息，右侧是电量百分比
 4. 底部显示瀑布图
 <img width="1195" height="856" alt="image" src="https://github.com/user-attachments/assets/b7989f4e-e55b-46ae-90c7-e9b15636a3b7" />
-![ae49d6f69b845db29147bf698228321b](https://github.com/user-attachments/assets/f67317aa-1b71-46c7-9978-d02bba6cff61)
+<img width="825" height="614" alt="image" src="https://github.com/user-attachments/assets/c8e009fd-32ff-46dd-b6c8-f3f3ee5120ea" />
+
 
 
 
