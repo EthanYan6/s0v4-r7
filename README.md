@@ -44,9 +44,10 @@
 1. 左上区域显示声纹图形，实时更新
 2. 右上区域显示频率，信道名
 3. 中间区域显示芯片等信息，右侧是电量百分比
-4. 底部显示声音的频谱图，根据接收的强度自动转换
+4. 底部显示瀑布图
 <img width="1195" height="856" alt="image" src="https://github.com/user-attachments/assets/b7989f4e-e55b-46ae-90c7-e9b15636a3b7" />
-<img width="1191" height="896" alt="image" src="https://github.com/user-attachments/assets/379a247f-e6c2-40bf-9d89-083a8e877c11" />
+![ae49d6f69b845db29147bf698228321b](https://github.com/user-attachments/assets/f67317aa-1b71-46c7-9978-d02bba6cff61)
+
 
 
 ## 构建
