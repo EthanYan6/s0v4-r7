@@ -15,6 +15,7 @@
 #include "../scheduler.h"
 #include "components.h"
 #include "graphics.h"
+#include <stdio.h>
 #include <string.h>
 
 static uint8_t previousBatteryLevel = 255;
@@ -173,6 +174,7 @@ static void STATUSLINE_renderVfo1(void) {
   }
 }
 
+/* 原样保留：其他页面使用的固定位置信息行，勿改 */
 void STATUSLINE_renderVfo1Row(uint8_t y) {
   if (RADIO_GetRadio() <= RADIO_SI4732) {
     PrintSmall(0, y, "%s", shortRadioNames[RADIO_GetRadio()]);
@@ -191,6 +193,21 @@ void STATUSLINE_renderVfo1Row(uint8_t y) {
     PrintSmallEx(LCD_WIDTH - 1 - 16, y, POS_R, C_FILL, "%u.%02uV",
                  gBatteryVoltage / 100, gBatteryVoltage % 100);
   }
+}
+
+/* 专业页用：项间 gapPx，返回 bw 后 x；固定步进 11 省 strlen */
+void STATUSLINE_renderVfo1RowEx(uint8_t y, uint8_t gapPx, uint8_t *outXAfterBw) {
+  const char *s[4];
+  uint8_t n = 0, x = 0;
+  if (RADIO_GetRadio() <= RADIO_SI4732) s[n++] = shortRadioNames[RADIO_GetRadio()];
+  if (radio->power <= TX_POW_HIGH) s[n++] = powerShortNames[radio->power];
+  if (radio->code.tx.type < 4u) s[n++] = codeShortNames[radio->code.tx.type];
+  if (RADIO_GetRadio() == RADIO_BK4819 && radio->bw <= BK4819_FILTER_BW_26k) s[n++] = bwNames[radio->bw];
+  for (uint8_t i = 0; i < n; i++) { PrintSmall(x, y, "%s", s[i]); x += (uint8_t)(10 + gapPx); }
+  if (outXAfterBw) *outXAfterBw = x;
+  if (showBattery) PrintSmallEx(LCD_WIDTH - 1, y, POS_R, C_INVERT, "%u%%", gBatteryPercent);
+  if (gSettings.batteryStyle == BAT_VOLTAGE)
+    PrintSmallEx(LCD_WIDTH - 1 - 16, y, POS_R, C_FILL, "%u.%02uV", gBatteryVoltage / 100, gBatteryVoltage % 100);
 }
 
 void STATUSLINE_render(void) {

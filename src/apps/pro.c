@@ -16,68 +16,73 @@
 
 #define VHF_UHF_BOUND_HZ 26000000
 
-#define PRO_LEFT_W (LCD_WIDTH / 3)
 #define PRO_TOP_ROW_H 16
+#define PRO_LEFT_CY 11
 #define PRO_INFO_Y 25
-#define PRO_AUDIO_BARS_Y 34
-#define PRO_SPECTRUM_TOP_Y  (PRO_AUDIO_BARS_Y + 2)
-#define PRO_AUDIO_BARS_H    (LCD_HEIGHT - PRO_AUDIO_BARS_Y)
-#define PRO_SPECTRUM_MAX_H  (LCD_HEIGHT - PRO_SPECTRUM_TOP_Y)
-#define PRO_SPECTRUM_H_LEFT  (PRO_SPECTRUM_MAX_H + 4)
-#define PRO_SPECTRUM_H_RIGHT (LCD_HEIGHT - PRO_SPECTRUM_TOP_Y)
-#define PRO_AUDIO_BAR_CNT 20
+#define PRO_LINE_Y 32
+#define PRO_FREQ_LABEL_Y 37
+#define PRO_FREQ_SPAN_HZ 400000u
+#define PRO_BARS_TOP_Y 38
 #define PRO_VOICE_BARS 36
 #define PRO_VOICE_MAX_H  (PRO_TOP_ROW_H - 2)
 #define PRO_FREQ_Y 10
 #define PRO_CH_Y 17
-#define PRO_SPECTRUM_BAR_GAP 1
+#define PRO_RIGHT_X 41
 #define PRO_TX_OFF_CLEAR_MS 6000
+#define PRO_BAR_W 3
+#define PRO_BAR_ROW_H 2
+#define PRO_BAR_ROWS ((LCD_HEIGHT - PRO_BARS_TOP_Y) / PRO_BAR_ROW_H)
+#define PRO_DEBRIS_MAX 6
+#define PRO_DEBRIS_W 3
+#define PRO_BAR_CLEAR_MS (2 * PRO_TX_OFF_CLEAR_MS)
 
 static uint8_t voiceHistory[PRO_VOICE_BARS];
 static uint32_t lastTxOffTime;
 static bool wasTx;
 static bool inTxOffCooldown;
 
+static uint8_t proBarLevel[PRO_BAR_ROWS];
+static uint8_t proBarFall[PRO_BAR_ROWS];
+static uint32_t lastBarSignalTime;
+static uint8_t proDebrisX[PRO_DEBRIS_MAX], proDebrisY[PRO_DEBRIS_MAX];
+static uint8_t proDebrisH[PRO_DEBRIS_MAX];
+static uint8_t proDebrisActive[PRO_DEBRIS_MAX];
+static uint16_t proDebrisSeed;
+static uint8_t proDebrisPhase;
+
+static void shiftVoice(void) {
+  uint8_t i;
+  for (i = 0; i < PRO_VOICE_BARS - 1; i++)
+    voiceHistory[i] = voiceHistory[i + 1];
+}
+
 static void pushVoiceSample(void) {
   if (gTxState == TX_ON) {
     wasTx = true;
     inTxOffCooldown = false;
     lastTxOffTime = 0;
-    uint8_t i;
-    for (i = 0; i < PRO_VOICE_BARS - 1; i++)
-      voiceHistory[i] = voiceHistory[i + 1];
-    {
-      unsigned int l = MIN((unsigned)BK4819_GetAfTxRx() * 200u, 65535u);
-      l = MIN(SQRT16(l), 124u);
-      voiceHistory[PRO_VOICE_BARS - 1] =
-          (uint8_t)ConvertDomain((int)l, 0, 124, 0, (int)PRO_VOICE_MAX_H);
-    }
+    shiftVoice();
+    { unsigned int l = MIN((unsigned)BK4819_GetAfTxRx() * 200u, 65535u); l = MIN(SQRT16(l), 124u); voiceHistory[PRO_VOICE_BARS - 1] = (uint8_t)ConvertDomain((int)l, 0, 124, 0, (int)PRO_VOICE_MAX_H); }
     return;
   }
-  if (wasTx) {
-    lastTxOffTime = Now();
-    inTxOffCooldown = true;
-    wasTx = false;
-  }
-  if (inTxOffCooldown && (uint32_t)(Now() - lastTxOffTime) >= PRO_TX_OFF_CLEAR_MS) {
-    memset(voiceHistory, 0, sizeof(voiceHistory));
-    inTxOffCooldown = false;
-    lastTxOffTime = 0;
-    return;
-  }
-  /* 松开 PTT 后 6s 内：继续左移并右侧补 0，波形持续往左走 */
+  if (wasTx) { lastTxOffTime = Now(); inTxOffCooldown = true; wasTx = false; }
   if (inTxOffCooldown) {
-    uint8_t i;
-    for (i = 0; i < PRO_VOICE_BARS - 1; i++)
-      voiceHistory[i] = voiceHistory[i + 1];
+    uint32_t t = Now();
+    if ((uint32_t)(t - lastTxOffTime) >= PRO_TX_OFF_CLEAR_MS) {
+      memset(voiceHistory, 0, sizeof(voiceHistory));
+      inTxOffCooldown = false;
+      lastTxOffTime = 0;
+      return;
+    }
+    shiftVoice();
     voiceHistory[PRO_VOICE_BARS - 1] = 0;
   }
 }
 
 static void renderLeftArea(void) {
-  uint8_t x, cy = PRO_TOP_ROW_H / 2;
-  bool showBars = (gTxState == TX_ON) ||
-      (inTxOffCooldown && (uint32_t)(Now() - lastTxOffTime) < PRO_TX_OFF_CLEAR_MS);
+  uint8_t x, cy = PRO_LEFT_CY;
+  uint32_t t = Now();
+  bool showBars = (gTxState == TX_ON) || (inTxOffCooldown && (uint32_t)(t - lastTxOffTime) < PRO_TX_OFF_CLEAR_MS);
   DrawHLine(0, cy, PRO_VOICE_BARS, C_FILL);
   if (!showBars) return;
   for (x = 0; x < PRO_VOICE_BARS; x++) {
@@ -91,22 +96,14 @@ static void renderLeftArea(void) {
   }
 }
 
-static void renderFreqAndChannel(void) {
-  const VFO *vfo = radio;
-  uint32_t f =
-      gTxState == TX_ON ? RADIO_GetTXF() : GetScreenF(vfo->rxF);
-  const uint16_t fp1 = f / MHZ;
-  const uint16_t fp2 = f / 100 % 1000;
-  const uint8_t fp3 = f % 100;
-
-  PrintBigDigitsEx(LCD_WIDTH - 25, PRO_FREQ_Y, POS_R, C_FILL, "%4u.%03u", fp1, fp2);
-  PrintBigDigitsEx(LCD_WIDTH - 3, PRO_FREQ_Y, POS_R, C_FILL, "%02u", fp3);
-  if (vfo->channel >= 0) {
-    PrintSmallEx(LCD_WIDTH - 1, PRO_CH_Y + 1, POS_R, C_FILL, "MR %03u %s",
-                 (unsigned)(vfo->channel + 1), vfo->name);
-  } else {
+static void renderFreqAndChannel(uint32_t f) {
+  PrintBigDigitsEx(LCD_WIDTH - 25, PRO_FREQ_Y, POS_R, C_FILL, "%4u.%03u", (uint16_t)(f / MHZ), (uint16_t)(f / 100 % 1000));
+  PrintBigDigitsEx(LCD_WIDTH - 3, PRO_FREQ_Y, POS_R, C_FILL, "%02u", (uint8_t)(f % 100));
+  PrintSmallEx(PRO_RIGHT_X, PRO_CH_Y + 1, POS_L, C_FILL, "%s", modulationTypeOptions[radio->modulation]);
+  if (radio->channel >= 0)
+    PrintSmallEx(LCD_WIDTH - 1, PRO_CH_Y + 1, POS_R, C_FILL, "MR %03u %s", (unsigned)(radio->channel + 1), radio->name);
+  else
     PrintSmallEx(LCD_WIDTH - 1, PRO_CH_Y + 1, POS_R, C_FILL, "VFO");
-  }
 }
 
 static void proTuneTo(uint32_t f) {
@@ -115,56 +112,81 @@ static void proTuneTo(uint32_t f) {
   RADIO_SaveCurrentVFO();
 }
 
-#define RSSI_STRONG 150
-#define PRO_SPECTRUM_BLOCK_H  2
-#define PRO_SPECTRUM_BLOCK_GAP 1
-#define PRO_SPECTRUM_H_MAX  (PRO_SPECTRUM_H_RIGHT - 12)
+static void renderFreqLineAndLabels(void) {
+  DrawHLine(0, PRO_LINE_Y, LCD_WIDTH, C_FILL);
+  DrawVLine(64, PRO_LINE_Y + 1, 4, C_FILL);
+  PrintSmallEx(0, PRO_FREQ_LABEL_Y, POS_L, C_FILL, "-%u.%u", 0, 4);
+  PrintSmallEx(LCD_WIDTH - 1, PRO_FREQ_LABEL_Y, POS_R, C_FILL, "+%u.%u", 0, 4);
+}
 
-static void renderAudioBars(void) {
-  uint8_t barW = (LCD_WIDTH - (PRO_AUDIO_BAR_CNT - 1) * PRO_SPECTRUM_BAR_GAP) / PRO_AUDIO_BAR_CNT;
-  uint8_t step = barW + PRO_SPECTRUM_BAR_GAP;
-  uint16_t rssi = RADIO_GetRSSI();
-  int rs;
-  uint8_t i, h, y_off, segH;
-  int maxHi;
-  uint8_t prof;
-
-  if (rssi <= RSSI_MIN)
-    rs = 0;
-  else if (rssi >= RSSI_STRONG)
-    rs = (int)PRO_SPECTRUM_H_LEFT;
-  else
-    rs = (int)((rssi - RSSI_MIN) * (unsigned)PRO_SPECTRUM_H_LEFT / (RSSI_STRONG - RSSI_MIN));
-
-  PrintSmallEx(LCD_WIDTH - 1, PRO_SPECTRUM_TOP_Y, POS_R, C_FILL, "S%u %ddBm",
-               DBm2S(Rssi2DBm(rssi), radio->rxF < VHF_UHF_BOUND_HZ), Rssi2DBm(rssi));
-  PrintSmallEx(LCD_WIDTH - 1, PRO_SPECTRUM_TOP_Y + 9, POS_R, C_FILL, "%s",
-               modulationTypeOptions[radio->modulation]);
-  if (rs <= 0) return;
-  for (i = 0; i < PRO_AUDIO_BAR_CNT; i++) {
-    if (i <= 6)
-      prof = (uint8_t)i;
-    else if (i <= 16)
-      prof = (uint8_t)((18 - i) / 2);
-    else if (i == 17)
-      prof = 1;
-    else
-      prof = 2;
-    maxHi = (prof == 0) ? 1 : (int)PRO_SPECTRUM_H_MAX * (int)prof / 6;
-    if (maxHi < 1) maxHi = 1;
-    h = 1 + (int)((maxHi - 1) * (unsigned)rs / (int)PRO_SPECTRUM_H_LEFT);
-    if (h > maxHi) h = (uint8_t)maxHi;
-    if (h < 1) h = 1;
-    for (y_off = 0; y_off < h; y_off += PRO_SPECTRUM_BLOCK_H + PRO_SPECTRUM_BLOCK_GAP) {
-      segH = (h - y_off) >= PRO_SPECTRUM_BLOCK_H ? PRO_SPECTRUM_BLOCK_H : (uint8_t)(h - y_off);
-      if (segH)
-        FillRect((int16_t)(i * step), (int16_t)(LCD_HEIGHT - h + y_off), barW, segH, C_FILL);
+static void updateDebris(void) {
+  uint8_t i;
+  proDebrisPhase++;
+  for (i = 0; i < PRO_DEBRIS_MAX; i++) {
+    if (!proDebrisActive[i]) continue;
+    if ((proDebrisPhase & 1u) == 0) proDebrisY[i]++;
+    if (proDebrisY[i] >= LCD_HEIGHT) proDebrisActive[i] = 0;
+  }
+  if ((Now() & 31u) >= 28u) {
+    for (i = 0; i < PRO_DEBRIS_MAX; i++) {
+      if (proDebrisActive[i]) continue;
+      proDebrisSeed = (uint16_t)(proDebrisSeed * 31u + (uint16_t)Now() + 1u);
+      proDebrisX[i] = (uint8_t)(proDebrisSeed % LCD_WIDTH);
+      if ((uint8_t)(proDebrisX[i] - 61) <= 4u)
+        proDebrisX[i] = (uint8_t)((proDebrisX[i] + 10) % LCD_WIDTH);
+      proDebrisY[i] = PRO_BARS_TOP_Y;
+      proDebrisH[i] = (uint8_t)(1u + (proDebrisSeed & 1u));
+      proDebrisActive[i] = 1;
+      break;
     }
   }
 }
 
+static void updateBars(void) {
+  uint16_t rssi = RADIO_GetRSSI();
+  uint8_t i;
+  if (gTxState != TX_ON && ((unsigned)(rssi - 2) >= 98u)) {
+    lastBarSignalTime = Now();
+    for (i = PRO_BAR_ROWS - 1; i > 0; i--) {
+      proBarLevel[i] = proBarLevel[i - 1];
+      proBarFall[i] = proBarFall[i - 1];
+    }
+    proBarLevel[0] = 1;
+    proBarFall[0] = 0;
+  } else {
+    if ((uint32_t)(Now() - lastBarSignalTime) >= PRO_BAR_CLEAR_MS) {
+      memset(proBarLevel, 0, sizeof(proBarLevel));
+      memset(proBarFall, 0, sizeof(proBarFall));
+    } else {
+      for (i = 0; i < PRO_BAR_ROWS; i++)
+        if (proBarLevel[i] != 0 && proBarFall[i] != 255)
+          proBarFall[i]++;
+    }
+  }
+  updateDebris();
+}
+
+static void renderBars(void) {
+  uint8_t i;
+  int16_t y, x = 63;
+  for (i = 0; i < PRO_BAR_ROWS; i++) {
+    if (proBarLevel[i] == 0) continue;
+    y = (int16_t)(PRO_BARS_TOP_Y + i * PRO_BAR_ROW_H + proBarFall[i]);
+    if (y < 64) FillRect(x, y, PRO_BAR_W, PRO_BAR_ROW_H, C_FILL);
+  }
+  for (i = 0; i < PRO_DEBRIS_MAX; i++)
+    if (proDebrisActive[i])
+      FillRect((int16_t)proDebrisX[i], (int16_t)proDebrisY[i], PRO_DEBRIS_W, (int16_t)proDebrisH[i], C_FILL);
+}
+
 void PRO_init(void) {
   memset(voiceHistory, 0, sizeof(voiceHistory));
+  memset(proBarLevel, 0, sizeof(proBarLevel));
+  memset(proBarFall, 0, sizeof(proBarFall));
+  lastBarSignalTime = 0;
+  memset(proDebrisActive, 0, sizeof(proDebrisActive));
+  proDebrisSeed = 0;
+  proDebrisPhase = 0;
   lastTxOffTime = 0;
   wasTx = false;
   inTxOffCooldown = false;
@@ -177,27 +199,25 @@ void PRO_update(void) {
 }
 
 void PRO_render(void) {
+  uint32_t f = gTxState == TX_ON ? RADIO_GetTXF() : GetScreenF(radio->rxF);
+  uint8_t xAfterBw;
+  uint16_t rssi;
   FillRect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_CLEAR);
-
   pushVoiceSample();
-  renderFreqAndChannel();
+  renderFreqAndChannel(f);
   renderLeftArea();
-  STATUSLINE_renderVfo1Row(PRO_INFO_Y);
-
-  renderAudioBars();
+  STATUSLINE_renderVfo1RowEx(PRO_INFO_Y, 1, &xAfterBw);
+  rssi = RADIO_GetRSSI();
+  { int dbm = Rssi2DBm(rssi); PrintSmallEx((uint8_t)(xAfterBw + 8), PRO_INFO_Y, POS_L, C_FILL, "S%u %ddBm", DBm2S(dbm, radio->rxF < VHF_UHF_BOUND_HZ), dbm); }
+  renderFreqLineAndLabels();
+  updateBars();
+  renderBars();
 }
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 bool PRO_key(KEY_Code_t key, Key_State_t state) {
-  if (key == KEY_EXIT && state == KEY_RELEASED) {
-    APPS_exit();
-    return true;
-  }
-
-  if (key == KEY_PTT) {
-    RADIO_ToggleTX(state == KEY_PRESSED);
-    return true;
-  }
+  if (key == KEY_EXIT && state == KEY_RELEASED) { APPS_exit(); return true; }
+  if (key == KEY_PTT) { RADIO_ToggleTX(state == KEY_PRESSED); return true; }
   if (key == KEY_MENU) {
     if (state == KEY_LONG_PRESSED)
       APPS_run(APP_SETTINGS);
@@ -206,21 +226,13 @@ bool PRO_key(KEY_Code_t key, Key_State_t state) {
     return true;
   }
   if ((state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) && (key == KEY_UP || key == KEY_DOWN)) {
-    if (RADIO_IsChMode())
-      CHANNELS_Next(key == KEY_UP);
-    else
-      RADIO_NextF(key == KEY_UP);
+    if (RADIO_IsChMode()) CHANNELS_Next(key == KEY_UP);
+    else RADIO_NextF(key == KEY_UP);
     RADIO_SaveCurrentVFODelayed();
     return true;
   }
-  if (key == KEY_3 && state == KEY_LONG_PRESSED) {
-    RADIO_ToggleVfoMR();
-    return true;
-  }
-  if (key == KEY_6 && state == KEY_LONG_PRESSED) {
-    RADIO_ToggleTxPower();
-    return true;
-  }
+  if (key == KEY_3 && state == KEY_LONG_PRESSED) { RADIO_ToggleVfoMR(); return true; }
+  if (key == KEY_6 && state == KEY_LONG_PRESSED) { RADIO_ToggleTxPower(); return true; }
   if (!RADIO_IsChMode() && state == KEY_RELEASED && key >= KEY_0 && key <= KEY_9) {
     gFInputCallback = proTuneTo;
     APPS_run(APP_FINPUT);
@@ -229,12 +241,9 @@ bool PRO_key(KEY_Code_t key, Key_State_t state) {
   }
   if (key == KEY_F && state == KEY_RELEASED) {
     gChEd = *radio;
-    if (RADIO_IsChMode()) {
-      gChEd.meta.type = TYPE_CH;
-    }
+    if (RADIO_IsChMode()) gChEd.meta.type = TYPE_CH;
     APPS_run(APP_CH_CFG);
     return true;
   }
-
   return false;
 }
